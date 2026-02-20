@@ -3,9 +3,7 @@ import numpy as np
 import cv2
 import time
 
-# ----------------------------
 # Stream / decode config
-# ----------------------------
 W, H = 1280, 720
 URL = "udp://0.0.0.0:5000?fifo_size=1000000&overrun_nonfatal=1"
 
@@ -21,9 +19,7 @@ cmd = [
     "-"
 ]
 
-# ----------------------------
 # Detection tuning (dock)
-# ----------------------------
 WARMUP_SEC = 8
 LEARNING_RATE_WARMUP = -1     # let MOG2 adapt during warmup
 LEARNING_RATE_FROZEN = 0      # freeze background after warmup
@@ -43,15 +39,11 @@ COOLDOWN_SEC = 2.0            # min time between "FISH EVENT" logs
 DEBUG_SHOW_MASKS = True       # shows roi_gray_eq + fg_mask windows
 DEBUG_DRAW_REJECTED = True    # draw rejected blobs in yellow
 
-# ----------------------------
 # ROI: crop borders (cone dominates)
-# ----------------------------
 x0, y0 = int(0.08 * W), int(0.08 * H)
 x1, y1 = int(0.92 * W), int(0.92 * H)
 
-# ----------------------------
 # Models / kernels (init once)
-# ----------------------------
 fgbg = cv2.createBackgroundSubtractorMOG2(history=1500, varThreshold=20, detectShadows=False)
 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
 
@@ -75,7 +67,7 @@ last_print = t0
 # Warmup timer should start BEFORE loop and persist
 start_time = time.time()
 
-# Presence state with temporal hysteresis
+# Presence state
 present_streak = 0
 fish_present = 0
 last_event_time = 0.0
@@ -91,20 +83,20 @@ try:
         frame = np.frombuffer(raw, dtype=np.uint8).reshape((H, W, 3)).copy()
         frames += 1
 
-        # --- ROI crop ---
+        # ROI crop
         roi = frame[y0:y1, x0:x1]
 
-        # --- Preprocess: grayscale -> mild blur -> CLAHE ---
+        # Preprocess: grayscale -> mild blur -> CLAHE
         gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (3, 3), 0)
         gray_eq = clahe.apply(gray)
 
-        # --- Background subtract: warmup then freeze ---
+        # Background subtract: warmup then freeze
         elapsed = time.time() - start_time
         lr = LEARNING_RATE_WARMUP if elapsed < WARMUP_SEC else LEARNING_RATE_FROZEN
         mask = fgbg.apply(gray_eq, learningRate=lr)
 
-        # --- Binarize + morphology cleanup ---
+        # Binarize + morphology cleanup
         mask = cv2.threshold(mask, 200, 255, cv2.THRESH_BINARY)[1]
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=1)
@@ -113,14 +105,14 @@ try:
             cv2.imshow("roi_gray_eq", gray_eq)
             cv2.imshow("fg_mask", mask)
 
-        # --- Motion "energy" gate ---
+        # Motion "energy" gate
         motion_pixels = cv2.countNonZero(mask)
         if motion_pixels < MOTION_PIXELS_MIN:
             contours = []
         else:
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # --- Contour filtering ---
+        # Contour filtering
         fish_like_this_frame = 0
 
         for c in contours:
@@ -146,7 +138,7 @@ try:
             fish_like_this_frame += 1
             cv2.rectangle(frame, (x0 + x, y0 + y), (x0 + x + w, y0 + y + h), (0, 255, 0), 2)
 
-        # --- Temporal presence hysteresis (replaces deque window) ---
+        # Temporal presence hysteresis (replaces deque window)
         if fish_like_this_frame > 0:
             present_streak += 1
         else:
@@ -157,13 +149,13 @@ try:
         else:
             fish_present = 0 if present_streak <= PRESENT_STREAK_OFF else 1
 
-        # --- Debounced event logging ---
+        # Debounced event logging
         now = time.time()
         if fish_present and (now - last_event_time) > COOLDOWN_SEC:
             last_event_time = now
             log_event(f"FISH EVENT (fish_like={fish_like_this_frame}, motion_pixels={motion_pixels})")
 
-        # --- Overlay ---
+        # Overlay
         cv2.rectangle(frame, (x0, y0), (x1, y1), (255, 255, 255), 1)
         cv2.putText(
             frame,
@@ -175,7 +167,7 @@ try:
             2
         )
 
-        # --- FPS print ---
+        # FPS print 
         if time.time() - last_print >= 1.0:
             fps = frames / (time.time() - t0)
             print(f"Frames: {frames} | Avg FPS: {fps:.1f}")

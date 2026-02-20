@@ -1,7 +1,7 @@
 import cv2
 import time
 
-cap = cv2.VideoCapture("udp://@:5000")  # your VLC URL
+cap = cv2.VideoCapture("udp://@:5000")  # VLC URL
 
 if not cap.isOpened():
     raise SystemExit("Failed to open stream. Is ffmpeg on the Pi running? Is the port 5000 correct?")
